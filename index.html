@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聽音抓生詞</title>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --success-color: #2ecc71;
+            --error-color: #e74c3c;
+            --bg-color: #f4f7f6;
+        }
+
+        body {
+            font-family: "微軟正黑體", sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: var(--bg-color);
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            user-select: none; /* 禁止選取文字 */
+        }
+
+        /* 頂部資訊列 */
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 800px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .lives { color: var(--error-color); }
+        .progress { color: var(--primary-color); }
+
+        /* 中央播放按鈕 */
+        .play-btn {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            color: white;
+            border: 8px solid rgba(255,255,255,0.5);
+            font-size: 3em;
+            cursor: pointer;
+            box-shadow: 0 8px 15px rgba(52, 152, 219, 0.3);
+            transition: transform 0.1s, background 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+
+        .play-btn:active { transform: scale(0.95); }
+        .play-btn:hover { background-color: #2980b9; }
+        
+        /* 播放時的波紋動畫 */
+        .playing { animation: pulse-shadow 1s infinite; }
+        @keyframes pulse-shadow {
+            0% { box-shadow: 0 0 0 0 rgba(52, 152, 219, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(52, 152, 219, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(52, 152, 219, 0); }
+        }
+
+        /* 單字網格區 */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .word-card {
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            padding: 20px 10px;
+            text-align: center;
+            font-size: 1.8em;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 0 #ccc;
+            position: relative;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .word-card:hover { transform: translateY(-2px); }
+        .word-card:active { 
+            transform: translateY(2px); 
+            box-shadow: 0 1px 0 #ccc;
+        }
+
+        /* 動畫與狀態 Class */
+        .correct-anim {
+            background-color: var(--success-color) !important;
+            color: white !important;
+            border-color: var(--success-color) !important;
+            transform: scale(1.1);
+        }
+
+        .wrong-anim {
+            background-color: var(--error-color) !important;
+            color: white !important;
+            border-color: var(--error-color) !important;
+            animation: shake 0.5s;
+        }
+
+        .fade-out {
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.3s;
+        }
+
+        .empty-slot {
+            visibility: hidden; /* 佔位但不顯示 */
+            pointer-events: none;
+        }
+
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            50% { transform: translateX(10px); }
+            75% { transform: translateX(-10px); }
+            100% { transform: translateX(0); }
+        }
+
+        /* 遮罩層 (結束畫面) */
+        .overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            color: white;
+            text-align: center;
+        }
+        
+        .overlay h2 { font-size: 3em; margin-bottom: 20px; }
+        .btn-restart {
+            padding: 15px 40px;
+            font-size: 1.5em;
+            background: var(--success-color);
+            border: none;
+            color: white;
+            border-radius: 50px;
+            cursor: pointer;
+        }
+
+        /* 響應式 */
+        @media (max-width: 768px) {
+            .grid-container { grid-template-columns: repeat(3, 1fr); }
+            .word-card { font-size: 1.4em; }
+        }
+        @media (max-width: 480px) {
+            .grid-container { grid-template-columns: repeat(2, 1fr); }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="header-bar">
+        <div class="progress">待解單字: <span id="remain-count">0</span></div>
+        <div class="lives">生命: <span id="lives-display">❤❤❤</span></div>
+    </div>
+
+    <button class="play-btn" id="play-audio-btn" onclick="playTargetSound()">
+        🔊
+    </button>
+    <div style="color:#666; margin-bottom: 20px;">(點擊喇叭聽發音，選出正確的字)</div>
+
+    <div class="grid-container" id="game-grid">
+        </div>
+
+    <div id="overlay" class="overlay">
+        <h2 id="end-title">遊戲結束</h2>
+        <p id="end-msg" style="font-size: 1.5em; margin-bottom: 30px;"></p>
+        <button class="btn-restart" onclick="initGame()">再來一次</button>
+    </div>
+
+    <script src="words.js"></script>
+
+    <script>
+        // --- 遊戲參數 ---
+        const MAX_LIVES = 3;
+        const DISPLAY_COUNT = 10; // 畫面上最多顯示幾個字
+
+        // --- 狀態變數 ---
+        let pool = [];          // 尚未顯示的單字庫
+        let onScreenWords = []; // 目前畫面上的單字 (物件陣列，可能包含 null)
+        let targetWord = null;  // 當前要聽的那個字
+        let lives = MAX_LIVES;
+        let isProcessing = false; // 防止連點
+
+        // DOM 元素
+        const grid = document.getElementById('game-grid');
+        const livesDisplay = document.getElementById('lives-display');
+        const remainDisplay = document.getElementById('remain-count');
+        const playBtn = document.getElementById('play-audio-btn');
+        const overlay = document.getElementById('overlay');
+        const endTitle = document.getElementById('end-title');
+        const endMsg = document.getElementById('end-msg');
+
+        // 檢查檔案
+        if (typeof wordData === 'undefined') {
+            alert("錯誤：找不到 words.js");
+        }
+
+        function shuffle(array) {
+            return array.sort(() => Math.random() - 0.5);
+        }
+
+        // 初始化
+        function initGame() {
+            // 1. 重置變數
+            lives = MAX_LIVES;
+            pool = shuffle([...wordData]); // 複製並洗牌
+            onScreenWords = new Array(DISPLAY_COUNT).fill(null);
+            isProcessing = false;
+            overlay.style.display = 'none';
+            
+            // 2. 填滿畫面 (如果單字不夠 10 個，就全放)
+            grid.innerHTML = '';
+            for(let i=0; i<DISPLAY_COUNT; i++) {
+                // 建立空的 DOM 格子
+                let card = document.createElement('div');
+                card.className = 'word-card empty-slot';
+                card.id = `slot-${i}`;
+                card.onclick = () => checkAnswer(i);
+                grid.appendChild(card);
+
+                // 如果池子還有字，就填入
+                if (pool.length > 0) {
+                    fillSlot(i, pool.pop());
+                }
+            }
+
+            updateUI();
+            pickNewTarget();
+        }
+
+        // 填入單字到指定格子
+        function fillSlot(index, wordObj) {
+            onScreenWords[index] = wordObj;
+            const el = document.getElementById(`slot-${index}`);
+            el.textContent = wordObj.word;
+            el.classList.remove('empty-slot', 'fade-out', 'correct-anim');
+            // 隨機動畫進場 (選用)
+        }
+
+        // 清空指定格子
+        function emptySlot(index) {
+            onScreenWords[index] = null;
+            const el = document.getElementById(`slot-${index}`);
+            el.classList.add('fade-out'); // 播放消失動畫
+            setTimeout(() => {
+                el.classList.add('empty-slot');
+                el.textContent = '';
+            }, 300);
+        }
+
+        // 選出新的目標單字
+        function pickNewTarget() {
+            // 過濾出目前畫面上「非空」的單字
+            const validWords = onScreenWords.filter(w => w !== null);
+
+            if (validWords.length === 0) {
+                gameWin();
+                return;
+            }
+
+            // 隨機選一個
+            targetWord = validWords[Math.floor(Math.random() * validWords.length)];
+            
+            // 自動播放聲音 (延遲一點點讓玩家準備)
+            setTimeout(playTargetSound, 500);
+        }
+
+        // 播放聲音
+        function playTargetSound() {
+            if (!targetWord) return;
+            
+            // 視覺效果
+            playBtn.classList.add('playing');
+            setTimeout(() => playBtn.classList.remove('playing'), 1000);
+
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(targetWord.word);
+                utterance.lang = 'zh-TW';
+                utterance.rate = 0.6; // 聽寫可以稍微慢一點
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // 檢查答案
+        function checkAnswer(slotIndex) {
+            if (isProcessing || lives <= 0) return;
+            
+            const clickedWord = onScreenWords[slotIndex];
+            if (!clickedWord) return; // 點到空位
+
+            const cardEl = document.getElementById(`slot-${slotIndex}`);
+
+            if (clickedWord.word === targetWord.word) {
+                // --- 答對 ---
+                isProcessing = true; // 鎖定防止連點
+                cardEl.classList.add('correct-anim'); // 綠色閃爍
+                
+                // 播放音效 (選用)
+                // new Audio('correct.mp3').play();
+
+                setTimeout(() => {
+                    // 1. 舊的消失
+                    emptySlot(slotIndex);
+
+                    // 2. 嘗試從池子遞補新的
+                    if (pool.length > 0) {
+                        setTimeout(() => {
+                            fillSlot(slotIndex, pool.pop());
+                            updateUI();
+                            isProcessing = false;
+                            pickNewTarget(); // 重新選題目
+                        }, 300);
+                    } else {
+                        // 池子空了，就不補，直接選下一題
+                        updateUI();
+                        isProcessing = false;
+                        pickNewTarget();
+                    }
+                    
+                }, 500);
+
+            } else {
+                // --- 答錯 ---
+                cardEl.classList.add('wrong-anim');
+                setTimeout(() => cardEl.classList.remove('wrong-anim'), 500);
+                
+                lives--;
+                updateUI();
+
+                if (lives <= 0) {
+                    gameOver();
+                }
+            }
+        }
+
+        function updateUI() {
+            // 更新愛心
+            let hearts = "";
+            for(let i=0; i<lives; i++) hearts += "❤";
+            livesDisplay.textContent = hearts;
+
+            // 更新剩餘數量 (池子裡 + 畫面上)
+            const activeCount = onScreenWords.filter(w => w !== null).length;
+            remainDisplay.textContent = pool.length + activeCount;
+        }
+
+        function gameOver() {
+            endTitle.textContent = "💔 挑戰失敗";
+            endTitle.style.color = "#e74c3c";
+            endMsg.textContent = "別氣餒，多聽幾次就熟了！";
+            overlay.style.display = 'flex';
+        }
+
+        function gameWin() {
+            endTitle.textContent = "🎉 全數通關";
+            endTitle.style.color = "#2ecc71";
+            endMsg.textContent = "太強了！所有生詞都聽懂了！";
+            overlay.style.display = 'flex';
+        }
+
+        // 啟動
+        initGame();
+
+    </script>
+</body>
+</html>
